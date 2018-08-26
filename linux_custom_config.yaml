@@ -1,0 +1,47 @@
+--- # Playbook for system setup of linux machine
+- hosts: '{{ myhosts }}'
+  remote_user: root
+  become: no
+  connection: ssh
+  gather_facts: no
+  tasks:
+  - name: set timezone to Americas Chicaco CST
+    timezone: name=America/Chicago
+  - name: Install sendmail and mail software
+    yum: name={{item}} state=present
+    with_items:
+         - sendmail
+         - mailx
+  - name: configure sendmail
+    template: src=configfiles/sendmail/sendmail.cf dest=/etc/mail/sendmail.cf owner=root group=root mode=644 backup=yes
+  - name: create standard groups
+    group: name='{{ item }}' state=present
+    with_items:
+       -  sysadmin
+       -  sysadmin-cust
+  - name: create temporalid for IAM team
+    user: name='{{ item }}' state=present comment=" EXAMPLE " groups=sysadmin
+    with_sequence: start=1 end=3 format=unixadm0%x
+  - name: create customer userid
+    user: name=custid state=present comment=" EXAMPLE " groups=sysadmin-cust
+  - name: create sysconf userid
+    user: name=sysconf state=present comment="technical user for Sysconf" uid=61323 groups=users
+  - name: SET Userid Password for custid and unixadm users
+    shell: echo "EXAMPLE " | passwd --stdin exampleID
+  - name: Set perms for sudoers.d
+    file: path=/etc/sudoers.d state=directory mode=0750
+  - name: SUDOERS.D/templates file update/copy
+    template: src=configfiles/sudo/sudoers.d/{{ item }} dest=/etc/sudoers.d owner=root group=root mode=440 backup=yes
+    with_items:
+       -   example_sudoers
+  - name: SUDO configuration file update
+    template: src=configfiles/sudo/sudoers dest=/etc/sudoers owner=root group=root mode=440 backup=yes 
+  - name: SSHD file update
+    template: src=configfiles/sshd/sshd_config dest=/etc/ssh/sshd_config owner=root group=root mode=600 backup=yes
+    notify:
+    - restart sshd
+    register: result
+  handlers:
+  - name: restart sshd 
+    service: name=sshd state=restarted
+    when: result.changed
